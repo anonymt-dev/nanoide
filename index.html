@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NanoIDE - Simple and modern web-based IDE</title>
     <link rel="icon" type="image/png" href="nano-favicon.svg"/>
-    <link rel="icon" type="image/png" href="https://example.com/nano-favicon.svg"/>
+    <!-- <link rel="icon" type="image/png" href="https://example.com/nano-favicon.svg"/> --> <!-- Removed example.com link -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Google Font DM Mono -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -20,21 +20,28 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/javascript/javascript.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/css/css.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/htmlmixed/htmlmixed.min.js"></script>
+    <!-- JSZip for exporting -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
     <style>
         html, body {
             font-family: 'DM Mono', monospace;
         }
         body {
-            overflow: hidden;
+            overflow: hidden; /* Prevent scrollbars on body */
         }
         .CodeMirror {
             font-family: 'DM Mono', monospace !important; /* Ensure DM Mono for editor */
             height: 100%;
             font-size: 14px;
         }
-        .file-item.active {
-            background-color: #4A5568; /* bg-gray-700 fallback */
+        .file-tab.active {
+            background-color: #4A5568; /* bg-gray-700 from Tailwind */
+            color: #E2E8F0; /* text-gray-300 */
+            border-bottom-color: transparent;
+        }
+        .file-tab {
+            border-bottom: 1px solid #4A5568; /* bg-gray-700 for inactive tab underline */
         }
         .fullscreen-preview {
             position: fixed !important;
@@ -63,15 +70,37 @@
             margin-right: 8px;
             font-size: 0.7rem;
         }
+        /* Custom select arrow */
+        select {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236B7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+            background-position: right 0.5rem center;
+            background-repeat: no-repeat;
+            background-size: 1.5em 1.5em;
+            padding-right: 2.5rem;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-gray-100 h-screen flex flex-col">
 
-    <header class="bg-gray-800 p-3 shadow-md flex justify-between items-center">
-        <h1 class="text-xl font-semibold text-cyan-400">NanoIDE</h1>
-        <button id="fullscreenToggle" class="bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-2 px-4 rounded text-sm transition-colors">
-            Toggle Preview Fullscreen
-        </button>
+    <header class="bg-gray-800 p-3 shadow-md flex flex-wrap justify-between items-center gap-2">
+        <div class="flex items-center">
+            <h1 class="text-xl font-semibold text-cyan-400 mr-4">NanoIDE</h1>
+            <input type="text" id="projectNameInput" placeholder="Project Name" class="bg-gray-700 text-white text-sm rounded px-2 py-1 mr-2 w-40 focus:ring-cyan-500 focus:border-cyan-500">
+            <button id="saveProjectButton" class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded text-xs transition-colors mr-2">Save</button>
+            <select id="loadProjectSelect" class="bg-gray-700 text-white text-xs rounded px-2 py-1 mr-2 focus:ring-cyan-500 focus:border-cyan-500">
+                <option value="">Load Project...</option>
+            </select>
+        </div>
+        <div class="flex items-center">
+            <button id="exportProjectButton" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-1 px-3 rounded text-xs transition-colors mr-2">Export ZIP</button>
+            <button id="openInNewTabButton" class="bg-purple-500 hover:bg-purple-600 text-white font-bold py-1 px-3 rounded text-xs transition-colors mr-2">Open in New Tab</button>
+            <button id="fullscreenToggle" class="bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-1 px-3 rounded text-xs transition-colors">
+                Toggle Preview Fullscreen
+            </button>
+        </div>
     </header>
 
     <!-- Button to exit fullscreen preview, initially hidden -->
@@ -80,21 +109,15 @@
     </button>
 
     <div class="flex flex-1 overflow-hidden">
-        <!-- Files Panel -->
-        <aside class="w-1/5 bg-gray-800 p-4 border-r border-gray-700 overflow-y-auto">
-            <h2 class="text-lg font-semibold mb-3 text-gray-300">Files</h2>
-            <ul id="fileList" class="space-y-1">
-                <li data-filename="index.html" class="file-item p-2 rounded hover:bg-gray-700 cursor-pointer transition-colors">index.html</li>
-                <li data-filename="styles.css" class="file-item p-2 rounded hover:bg-gray-700 cursor-pointer transition-colors">styles.css</li>
-                <li data-filename="app.js" class="file-item p-2 rounded hover:bg-gray-700 cursor-pointer transition-colors">app.js</li>
-            </ul>
-        </aside>
-
         <!-- Coding Area & Console -->
-        <main class="w-2/5 bg-gray-800 flex flex-col">
+        <main class="w-3/5 bg-gray-800 flex flex-col">
+            <!-- File Tabs -->
+            <div id="fileTabsContainer" class="flex-shrink-0 bg-gray-800 border-b border-gray-700 flex">
+                <!-- Tabs will be dynamically inserted here -->
+            </div>
             <div id="editorArea" class="h-2/3 flex flex-col overflow-hidden">
-                <div id="editorContainer" class="flex-1 overflow-hidden"></div>
-                <div class="p-2 bg-gray-700 text-xs text-gray-400" id="currentFileNameDisplay">index.html</div>
+                <div id="editorContainer" class="flex-1 overflow-hidden bg-gray-850"></div>
+                <!-- currentFileNameDisplay removed, tabs serve this purpose -->
             </div>
             <div id="consolePanel" class="h-1/3 bg-gray-800 border-t border-gray-600 flex flex-col">
                 <div class="p-2 bg-gray-700 text-sm font-semibold text-gray-300 flex justify-between items-center border-b border-gray-600">
@@ -112,7 +135,7 @@
     </div>
 
     <script>
-        const initialFiles = { // Keep initial files as they were for testing
+        const defaultProjectFiles = {
             'index.html': `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -132,9 +155,7 @@
 </body>
 </html>`,
             'styles.css': `body {
-    /* DM Mono will be inherited from parent IDE, but can be set explicitly in preview too */
-    /* font-family: 'DM Mono', monospace;  */ 
-    font-family: sans-serif; /* Or keep as is to test default styling */
+    font-family: sans-serif;
     background-color: #f0f0f0;
     color: #333;
     margin: 20px;
@@ -149,7 +170,6 @@ button {
     border-radius: 5px;
     cursor: pointer;
     margin-top: 5px;
-    /* font-family: 'DM Mono', monospace; Ensure buttons also use it if desired in preview */
 }
 button:hover { background-color: #218838; }`,
             'app.js': `console.log("App.js loaded!", { version: "1.0", status: "OK" });
@@ -159,7 +179,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const heading = document.querySelector('h1');
     if (heading) {
         heading.addEventListener('click', () => {
-            alert('Heading clicked!'); // Test basic interactivity
+            alert('Heading clicked!'); 
             document.body.style.backgroundColor = document.body.style.backgroundColor === 'lightblue' ? '#f0f0f0' : 'lightblue';
             console.info('Heading clicked, background toggled.');
         });
@@ -179,7 +199,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function testConsoleError() {
     console.error("This is a test error from app.js.", new Error("Custom app error!"));
-    // foo.bar(); // To trigger a real uncaught error
 }
 
 function testUnhandledPromise() {
@@ -201,16 +220,24 @@ function testLogTypes() {
         };
 
         let currentFile = 'index.html';
-        const filesData = { ...initialFiles };
+        let filesData = { ...defaultProjectFiles }; // Holds content of files for the current project
+        let currentProjectName = "MyProject";
+        let allProjects = {}; // { projectName: { files: { ... } } }
 
         const editorContainer = document.getElementById('editorContainer');
         const outputFrame = document.getElementById('outputFrame');
-        const fileListElement = document.getElementById('fileList');
-        const currentFileNameDisplay = document.getElementById('currentFileNameDisplay');
+        const fileTabsContainer = document.getElementById('fileTabsContainer');
+        
         const fullscreenToggleButton = document.getElementById('fullscreenToggle');
         const exitFullscreenPreviewButton = document.getElementById('exitFullscreenPreviewButton');
         const consoleOutputElement = document.getElementById('consoleOutput');
         const clearConsoleButton = document.getElementById('clearConsoleButton');
+
+        const projectNameInput = document.getElementById('projectNameInput');
+        const saveProjectButton = document.getElementById('saveProjectButton');
+        const loadProjectSelect = document.getElementById('loadProjectSelect');
+        const exportProjectButton = document.getElementById('exportProjectButton');
+        const openInNewTabButton = document.getElementById('openInNewTabButton');
 
         const editor = CodeMirror(editorContainer, {
             lineNumbers: true,
@@ -228,16 +255,46 @@ function testLogTypes() {
             if (filename.endsWith('.js')) return 'javascript';
             return 'text/plain';
         }
+        
+        // Cookie Helper Functions
+        function setCookie(name, value, days) {
+            let expires = "";
+            if (days) {
+                const date = new Date();
+                date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+                expires = "; expires=" + date.toUTCString();
+            }
+            // Encode value to handle special characters and large data
+            document.cookie = name + "=" + (encodeURIComponent(value) || "") + expires + "; path=/; SameSite=Lax";
+        }
+
+        function getCookie(name) {
+            const nameEQ = name + "=";
+            const ca = document.cookie.split(';');
+            for (let i = 0; i < ca.length; i++) {
+                let c = ca[i];
+                while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+                if (c.indexOf(nameEQ) === 0) {
+                    // Decode value
+                    return decodeURIComponent(c.substring(nameEQ.length, c.length));
+                }
+            }
+            return null;
+        }
+
+        function eraseCookie(name) {
+            document.cookie = name + '=; Max-Age=-99999999; path=/; SameSite=Lax';
+        }
+
 
         const consoleInterceptorScript = `
             <script>
             (function() {
-                const R_CONSOLE = window.console; // Keep a reference to the original console
+                const R_CONSOLE = window.console; 
 
                 function serializeArg(arg) {
                     try {
                         if (arg instanceof Error) {
-                            // Limit stack trace for brevity in console
                             const stack = arg.stack ? '\\n' + arg.stack.split('\\n').slice(0, 7).join('\\n') + (arg.stack.split('\\n').length > 7 ? '\\n...' : '') : '';
                             return \`\${arg.name || 'Error'}: \${arg.message}\${stack}\`;
                         }
@@ -254,16 +311,13 @@ function testLogTypes() {
                                 if (value instanceof HTMLElement) return \`<\${value.tagName.toLowerCase()} id="\${value.id || ''}" class="\${value.className || ''}">\`;
                                 if (value instanceof Event) return \`[Event: \${value.type}]\`;
                                 if (typeof value === 'function') return \`function \${value.name || '(anonymous)'}()\`;
-                                // For arrays/objects, JSON.stringify handles nesting, we just prevent cycles
                                 return value;
-                            }, 2); // Indent for readability
+                            }, 2); 
                         }
                         if (typeof arg === 'function') return \`function \${arg.name || '(anonymous)'}() { ... }\`;
                         if (typeof arg === 'symbol') return String(arg);
-                        // Primitives and others
                         return String(arg);
                     } catch (e) {
-                        // If JSON.stringify fails (e.g., for some exotic objects not handled above)
                         return \`[Unserializable Object: \${e.name} - \${e.message}]\`;
                     }
                 }
@@ -272,16 +326,15 @@ function testLogTypes() {
                 const methodsToOverride = ['log', 'error', 'warn', 'info', 'debug'];
                 
                 methodsToOverride.forEach(level => {
-                    const originalMethod = R_CONSOLE[level] || R_CONSOLE.log; // Fallback to .log if method not present
+                    const originalMethod = R_CONSOLE[level] || R_CONSOLE.log; 
                     newConsole[level] = (...args) => {
                         try {
                             if (originalMethod) {
-                                originalMethod.apply(R_CONSOLE, args); // Call the real console method
+                                originalMethod.apply(R_CONSOLE, args); 
                             }
                             const serializedArgs = args.map(serializeArg);
                             window.parent.postMessage({ type: 'console', level: level, data: serializedArgs }, '*');
                         } catch (e) {
-                            // Fallback if our interceptor has an issue
                             if (R_CONSOLE.error) R_CONSOLE.error('NanoIDE Console Interceptor Error:', e);
                         }
                     };
@@ -293,14 +346,12 @@ function testLogTypes() {
                         const errorDetails = [\`Uncaught \${event.error ? event.error.name || 'Error' : 'Error'}: \${event.message}\`];
                         if (event.filename) errorDetails.push(\`at \${event.filename.substring(event.filename.lastIndexOf('/') + 1)}:\${event.lineno}:\${event.colno}\`);
                         if (event.error && event.error.stack) {
-                             // Serialize the error object itself for better stack trace formatting
                             errorDetails.push(serializeArg(event.error));
                         } else if (event.message) {
-                            // If no event.error, use the message
                             errorDetails.push(event.message);
                         }
                         
-                        if (R_CONSOLE.error) R_CONSOLE.error(...errorDetails); // Log to browser's real console too
+                        if (R_CONSOLE.error) R_CONSOLE.error(...errorDetails); 
                         window.parent.postMessage({ type: 'console', level: 'error', data: errorDetails }, '*');
                     } catch (e) {
                         if (R_CONSOLE.error) R_CONSOLE.error('NanoIDE Global Error Handler Error:', e);
@@ -311,7 +362,7 @@ function testLogTypes() {
                     try {
                         let reason = event.reason;
                         const rejectionDetails = ['Unhandled Promise Rejection:'];
-                        rejectionDetails.push(serializeArg(reason)); // Serialize the reason
+                        rejectionDetails.push(serializeArg(reason)); 
 
                         if (R_CONSOLE.warn) R_CONSOLE.warn(...rejectionDetails);
                         window.parent.postMessage({ type: 'console', level: 'warn', data: rejectionDetails }, '*');
@@ -319,25 +370,16 @@ function testLogTypes() {
                         if (R_CONSOLE.error) R_CONSOLE.error('NanoIDE Unhandled Rejection Handler Error:', e);
                     }
                 });
-                 // R_CONSOLE.log('NanoIDE Console Interceptor Loaded.'); // For debugging the interceptor itself
             })();
             <\/script>
         `;
 
-        function updatePreview() {
-            if (consoleOutputElement) {
-                consoleOutputElement.innerHTML = '';
-                const reloadMsg = document.createElement('div');
-                reloadMsg.className = 'console-message';
-                reloadMsg.innerHTML = `<span class="timestamp">[${new Date().toLocaleTimeString()}]</span><span class="text-gray-500 italic">Preview reloading... JS context reset.</span>`;
-                consoleOutputElement.appendChild(reloadMsg);
-            }
+        function buildSourceDoc() {
+            const htmlContent = filesData['index.html'] || '';
+            const cssContent = filesData['styles.css'] || '';
+            const jsContent = filesData['app.js'] || '';
 
-            const htmlContent = filesData['index.html'];
-            const cssContent = filesData['styles.css'];
-            const jsContent = filesData['app.js'];
-
-            const sourceDoc = `
+            return `
                 <!DOCTYPE html>
                 <html lang="en">
                 <head>
@@ -352,7 +394,17 @@ function testLogTypes() {
                 </body>
                 </html>
             `;
-            outputFrame.srcdoc = sourceDoc;
+        }
+
+        function updatePreview() {
+            if (consoleOutputElement) {
+                consoleOutputElement.innerHTML = '';
+                const reloadMsg = document.createElement('div');
+                reloadMsg.className = 'console-message';
+                reloadMsg.innerHTML = `<span class="timestamp">[${new Date().toLocaleTimeString()}]</span><span class="text-gray-500 italic">Preview reloading... JS context reset.</span>`;
+                consoleOutputElement.appendChild(reloadMsg);
+            }
+            outputFrame.srcdoc = buildSourceDoc();
         }
         
         let debounceTimer;
@@ -362,31 +414,189 @@ function testLogTypes() {
             debounceTimer = setTimeout(updatePreview, 300);
         });
 
-        function setActiveFile(filename) {
+        function createFileTabs() {
+            fileTabsContainer.innerHTML = ''; // Clear existing tabs
+            const fileNames = Object.keys(filesData); // Use current project's files
+
+            fileNames.forEach(filename => {
+                const tab = document.createElement('button');
+                tab.className = 'file-tab px-4 py-2 text-sm text-gray-400 hover:bg-gray-700 hover:text-gray-200 transition-colors';
+                tab.textContent = filename;
+                tab.dataset.filename = filename;
+                if (filename === currentFile) {
+                    tab.classList.add('active');
+                }
+                tab.addEventListener('click', () => setActiveTab(filename));
+                fileTabsContainer.appendChild(tab);
+            });
+        }
+
+        function setActiveTab(filename) {
             if (currentFile && editor && filesData.hasOwnProperty(currentFile)) {
-                filesData[currentFile] = editor.getValue();
+                filesData[currentFile] = editor.getValue(); // Save content of old file
             }
             currentFile = filename;
             editor.setValue(filesData[filename] || '');
             editor.setOption('mode', getMode(filename));
-            currentFileNameDisplay.textContent = filename;
+            editor.focus();
 
-            document.querySelectorAll('#fileList .file-item').forEach(item => {
-                item.classList.remove('active', 'bg-cyan-600', 'text-white');
-                item.classList.add('hover:bg-gray-700');
-                if (item.dataset.filename === filename) {
-                    item.classList.add('active', 'bg-cyan-600', 'text-white');
-                    item.classList.remove('hover:bg-gray-700');
-                }
+            document.querySelectorAll('#fileTabsContainer .file-tab').forEach(tab => {
+                tab.classList.toggle('active', tab.dataset.filename === filename);
             });
-            updatePreview();
+            // No need to updatePreview() here as file content hasn't changed yet,
+            // only if the editor.on('change') fires or if switching projects.
+            // If it was desired to refresh preview on tab switch, call updatePreview()
         }
 
-        fileListElement.addEventListener('click', (event) => {
-            if (event.target.tagName === 'LI' && event.target.dataset.filename) {
-                setActiveFile(event.target.dataset.filename);
+        projectNameInput.addEventListener('input', (e) => {
+            currentProjectName = e.target.value.trim() || "Untitled Project";
+        });
+
+        function saveCurrentProject() {
+            if (!currentProjectName || currentProjectName === "Untitled Project") {
+                const newName = prompt("Please enter a name for this project:", currentProjectName);
+                if (newName && newName.trim() !== "") {
+                    currentProjectName = newName.trim();
+                    projectNameInput.value = currentProjectName;
+                } else {
+                    alert("Project not saved. A valid name is required.");
+                    return;
+                }
+            }
+            // Ensure current file content is captured
+            filesData[currentFile] = editor.getValue(); 
+            
+            allProjects[currentProjectName] = { files: { ...filesData } }; // Deep copy filesData
+            try {
+                setCookie('nanoIDEProjects', JSON.stringify(allProjects), 365);
+                alert(`Project "${currentProjectName}" saved!`);
+                populateLoadProjectSelect(); // Refresh dropdown
+            } catch (e) {
+                alert(`Error saving project: ${e.message}. Cookies might be full or disabled.`);
+                console.error("Error saving to cookie:", e);
+            }
+        }
+        saveProjectButton.addEventListener('click', saveCurrentProject);
+
+        function populateLoadProjectSelect() {
+            const savedProjectNames = Object.keys(allProjects);
+            loadProjectSelect.innerHTML = '<option value="">Load Project...</option>'; // Reset
+            savedProjectNames.forEach(name => {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                loadProjectSelect.appendChild(option);
+            });
+        }
+
+        function loadProject(projectName) {
+            if (allProjects[projectName]) {
+                currentProjectName = projectName;
+                projectNameInput.value = currentProjectName;
+                filesData = { ...allProjects[projectName].files }; // Deep copy
+                
+                // Determine first file to open, or default to index.html
+                const fileKeys = Object.keys(filesData);
+                currentFile = fileKeys.includes('index.html') ? 'index.html' : fileKeys[0] || 'index.html';
+                if (!filesData[currentFile] && fileKeys.length > 0) { // If currentFile somehow doesn't exist but others do
+                    currentFile = fileKeys[0];
+                } else if (fileKeys.length === 0) { // Empty project loaded? Fallback.
+                    filesData = { ...defaultProjectFiles };
+                    currentFile = 'index.html';
+                }
+
+                createFileTabs(); // Rebuild tabs for the new project
+                setActiveTab(currentFile); // Set the editor content and active tab
+                updatePreview(); // Refresh preview with new project content
+                alert(`Project "${projectName}" loaded.`);
+            } else {
+                alert(`Error: Project "${projectName}" not found.`);
+            }
+        }
+        
+        loadProjectSelect.addEventListener('change', (e) => {
+            if (e.target.value) {
+                loadProject(e.target.value);
+                e.target.value = ""; // Reset select
             }
         });
+
+        function initializeIDE() {
+            const savedProjectsCookie = getCookie('nanoIDEProjects');
+            if (savedProjectsCookie) {
+                try {
+                    allProjects = JSON.parse(savedProjectsCookie);
+                    const projectNames = Object.keys(allProjects);
+                    if (projectNames.length > 0) {
+                        // Load the first project found or a 'lastOpenedProject' if we stored that
+                        loadProject(projectNames[0]); // Load the first project by default
+                    } else { // Cookie exists but empty object
+                        allProjects = {}; // Ensure it's an empty object
+                        projectNameInput.value = currentProjectName;
+                        filesData = { ...defaultProjectFiles }; // Start with default if no projects
+                        createFileTabs();
+                        setActiveTab('index.html');
+                    }
+                } catch (e) {
+                    console.error("Error parsing projects from cookie:", e);
+                    // Corrupted cookie, start fresh
+                    allProjects = {};
+                    eraseCookie('nanoIDEProjects'); 
+                    projectNameInput.value = currentProjectName;
+                    filesData = { ...defaultProjectFiles };
+                    createFileTabs();
+                    setActiveTab('index.html');
+                }
+            } else {
+                // No cookie, start with default project
+                projectNameInput.value = currentProjectName;
+                filesData = { ...defaultProjectFiles };
+                createFileTabs();
+                setActiveTab('index.html');
+            }
+            populateLoadProjectSelect();
+            updatePreview(); // Initial preview render
+            setTimeout(() => editor.refresh(), 100); // Refresh editor after UI setup
+        }
+
+
+        exportProjectButton.addEventListener('click', () => {
+            if (!currentProjectName || Object.keys(filesData).length === 0) {
+                alert("No project loaded or project is empty.");
+                return;
+            }
+            filesData[currentFile] = editor.getValue(); // Ensure current file is up-to-date
+
+            const zip = new JSZip();
+            Object.keys(filesData).forEach(filename => {
+                zip.file(filename, filesData[filename]);
+            });
+
+            zip.generateAsync({ type: "blob" })
+                .then(function(content) {
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(content);
+                    link.download = `${currentProjectName.replace(/[^a-z0-9_\-\.]/gi, '_') || 'nanoide_project'}.zip`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(link.href);
+                });
+        });
+
+        openInNewTabButton.addEventListener('click', () => {
+            filesData[currentFile] = editor.getValue(); // Ensure current file is up-to-date
+            const source = buildSourceDoc();
+            const newWindow = window.open('about:blank', '_blank');
+            if (newWindow) {
+                newWindow.document.open();
+                newWindow.document.write(source);
+                newWindow.document.close();
+            } else {
+                alert("Popup blocked! Please allow popups for this site.");
+            }
+        });
+
 
         function toggleFullscreenUI(isFullscreen) {
             if (isFullscreen) {
@@ -431,10 +641,9 @@ function testLogTypes() {
             timestampSpan.textContent = `[${new Date().toLocaleTimeString()}]`;
 
             const contentSpan = document.createElement('span');
-            // data is an array of serialized arguments
             contentSpan.textContent = data.join(' '); 
 
-            let textColor = 'text-gray-300'; // Default for log
+            let textColor = 'text-gray-300'; 
             if (level === 'error') textColor = 'text-red-400';
             else if (level === 'warn') textColor = 'text-yellow-400';
             else if (level === 'info') textColor = 'text-blue-400';
@@ -448,8 +657,39 @@ function testLogTypes() {
             consoleOutputElement.scrollTop = consoleOutputElement.scrollHeight;
         });
 
-        setActiveFile('index.html');
-        setTimeout(() => editor.refresh(), 100);
+        // Keyboard Shortcuts
+        document.addEventListener('keydown', function(event) {
+            const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+            const ctrlKey = isMac ? event.metaKey : event.ctrlKey;
+
+            if (ctrlKey && event.key === 's') {
+                event.preventDefault();
+                saveCurrentProject();
+            } else if (ctrlKey && event.altKey && event.key === 'ArrowRight') {
+                event.preventDefault();
+                const tabs = Array.from(fileTabsContainer.querySelectorAll('.file-tab'));
+                const currentIndex = tabs.findIndex(tab => tab.dataset.filename === currentFile);
+                if (currentIndex < tabs.length - 1) {
+                    setActiveTab(tabs[currentIndex + 1].dataset.filename);
+                }
+            } else if (ctrlKey && event.altKey && event.key === 'ArrowLeft') {
+                event.preventDefault();
+                const tabs = Array.from(fileTabsContainer.querySelectorAll('.file-tab'));
+                const currentIndex = tabs.findIndex(tab => tab.dataset.filename === currentFile);
+                if (currentIndex > 0) {
+                    setActiveTab(tabs[currentIndex - 1].dataset.filename);
+                }
+            } else if (ctrlKey && event.shiftKey && event.key.toLowerCase() === 'e') {
+                event.preventDefault();
+                exportProjectButton.click();
+            } else if (ctrlKey && event.shiftKey && event.key.toLowerCase() === 'o') {
+                event.preventDefault();
+                openInNewTabButton.click();
+            }
+        });
+
+        // Initialize
+        initializeIDE();
 
     </script>
 </body>
